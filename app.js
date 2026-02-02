@@ -65,8 +65,8 @@ const server = createServer(async (req, res) => {
       const existingData = JSON.parse(fileData);
 
       if (existingData[shortCode]) {
-        // res.writeHead(302, { Location: existingData[shortCode] });
-        res.writeHead(302, { Location: "https://youtube.com" });
+        res.writeHead(302, { Location: existingData[shortCode] });
+        // res.writeHead(302, { Location: "https://youtube.com" });
         return res.end();
       }
     } catch {}
