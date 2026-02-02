@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>URL Shortener</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>URL Shortener</h1>
+
+      <form id="shorten-form">
+        <div>
+          <label>Enter the URL:</label>
+          <input type="url" name="url" required />
+        </div>
+
+        <div>
+          <label>Enter short code:</label>
+          <input type="text" name="shortCode" required />
+        </div>
+
+        <button type="submit">Submit</button>
+      </form>
+
+      <h2>Result</h2>
+      <p id="result"></p>
+
+      <button id="show-btn">Show All URLs</button>
+
+      <ul id="url-list"></ul>
+    </div>
+
+    <script>
+      const form = document.getElementById("shorten-form");
+      const result = document.getElementById("result");
+      const list = document.getElementById("url-list");
+      const showBtn = document.getElementById("show-btn");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const fd = new FormData(event.target);
+        const url = fd.get("url");
+        const shortCode = fd.get("shortCode");
+
+        const response = await fetch("/shorten", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url, shortCode }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          result.innerText = data.error;
+          result.style.color = "red";
+        } else {
+          const shortUrl = `${window.location.origin}/${data.shortCode}`;
+          result.innerHTML = `Short URL: <a href="${shortUrl}" target="_blank">${shortUrl}</a>`;
+          result.style.color = "green";
+        }
+      });
+
+      showBtn.addEventListener("click", async () => {
+        const res = await fetch("/urls");
+        const data = await res.json();
+
+        list.innerHTML = "";
+
+        for (let code in data) {
+          const shortUrl = `${window.location.origin}/${code}`;
+          const longUrl = data[code];
+
+          const li = document.createElement("li");
+          li.innerHTML = `
+    <a href="${shortUrl}" target="_blank">${shortUrl}</a>
+    → 
+    <a href="${longUrl}" target="_blank">${longUrl}</a>
+  `;
+          list.appendChild(li);
+        }
+      });
+    </script>
+  </body>
+</html>
