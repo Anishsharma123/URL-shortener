@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>URL Shortener</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      width: 450px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    input {
+      width: 100%;
+      padding: 8px;
+      margin: 8px 0;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    #result {
+      margin-top: 15px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    ul {
+      margin-top: 15px;
+      padding-left: 20px;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>URL Shortener</h1>
+
+    <form id="shorten-form">
+      <input type="url" name="url" placeholder="Enter long URL" required />
+      <input type="text" name="shortCode" placeholder="Enter short code" required />
+      <button type="submit">Shorten</button>
+    </form>
+
+    <p id="result"></p>
+
+    <button id="show-btn">Show All URLs</button>
+
+    <ul id="url-list"></ul>
+  </div>
+
+  <script>
+    const form = document.getElementById("shorten-form");
+    const result = document.getElementById("result");
+    const showBtn = document.getElementById("show-btn");
+    const list = document.getElementById("url-list");
+
+    // ===== CREATE SHORT URL =====
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const fd = new FormData(form);
+      const url = fd.get("url");
+      const shortCode = fd.get("shortCode");
+
+      const response = await fetch("/shorten", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, shortCode })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        result.style.color = "red";
+        result.innerText = data.error;
+      } else {
+        const shortUrl = `${window.location.origin}/s/${data.shortCode}`;
+        result.style.color = "green";
+        result.innerHTML = `Short URL: <a href="${shortUrl}" target="_blank">${shortUrl}</a>`;
+        form.reset();
+      }
+    });
+
+    // ===== SHOW ALL URLS =====
+    showBtn.addEventListener("click", async () => {
+      const response = await fetch("/urls");
+      const data = await response.json();
+
+      list.innerHTML = "";
+
+      if (Object.keys(data).length === 0) {
+        list.innerHTML = "<li>No URLs found</li>";
+        return;
+      }
+
+      for (let code in data) {
+        const shortUrl = `${window.location.origin}/s/${code}`;
+        const longUrl = data[code];
+
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <a href="${shortUrl}" target="_blank">${shortUrl}</a>
+          →
+          <a href="${longUrl}" target="_blank">${longUrl}</a>
+        `;
+        list.appendChild(li);
+      }
+    });
+  </script>
+</body>
+</html>

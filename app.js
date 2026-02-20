@@ -1,26 +1,24 @@
+import express from "express";
 import { readFile, writeFile } from "fs/promises";
 import path from "path";
-import { createServer } from "http";
 import { fileURLToPath } from "url";
 
+const app = express();
 const PORT = 3000;
 
+// Fix __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Path to JSON database
 const dataFile = path.join(__dirname, "url.json");
 
-// Serve static files
-const serveFile = async (res, filePath, contentType) => {
-  try {
-    const data = await readFile(filePath, "utf-8");
-    res.writeHead(200, { "Content-Type": contentType });
-    res.end(data);
-  } catch {
-    res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("404 Page Not Found");
-  }
-};
+// ================= MIDDLEWARE =================
+app.use(express.json()); // for fetch JSON requests
+app.use(express.urlencoded({ extended: true })); // for form submissions
+app.use(express.static(path.join(__dirname, "public"))); // serve index.html
+
+// ================= HELPER FUNCTIONS =================
 
 // Validate URL
 const isValidUrl = (url) => {
@@ -32,111 +30,85 @@ const isValidUrl = (url) => {
   }
 };
 
-const server = createServer(async (req, res) => {
-  console.log(req.method, req.url);
-
-  // ===== GET ROUTES =====
-  if (req.method === "GET") {
-    if (req.url === "/") {
-      return serveFile(res, path.join(__dirname, "index.html"), "text/html");
-    }
-
-    if (req.url === "/style.css") {
-      return serveFile(res, path.join(__dirname, "style.css"), "text/css");
-    }
-
-    // 🔥 GET ALL URLS
-    if (req.url === "/urls") {
-      try {
-        const fileData = await readFile(dataFile, "utf-8");
-        const urls = fileData.trim() ? JSON.parse(fileData) : {};
-        res.writeHead(200, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify(urls));
-      } catch {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({}));
-      }
-    }
-
-    // 🔥 REDIRECT SHORT URL
-    const shortCode = req.url.slice(1);
-    try {
-      const fileData = await readFile(dataFile, "utf-8");
-      const existingData = JSON.parse(fileData);
-
-      if (existingData[shortCode]) {
-        res.writeHead(302, { Location: existingData[shortCode] });
-        // res.writeHead(302, { Location: "https://youtube.com" });
-        return res.end();
-      }
-    } catch {}
-
-    res.writeHead(404, { "Content-Type": "text/plain" });
-    return res.end("Short URL not found");
+// Read JSON file safely
+const readData = async () => {
+  try {
+    const fileData = await readFile(dataFile, "utf-8");
+    return fileData.trim() ? JSON.parse(fileData) : {};
+  } catch {
+    return {};
   }
+};
 
-  // ===== POST ROUTE =====
-  if (req.method === "POST" && req.url === "/shorten") {
-    let body = "";
+// Save JSON file
+const saveData = async (data) => {
+  await writeFile(dataFile, JSON.stringify(data, null, 2));
+};
 
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
+// ================= ROUTES =================
 
-    req.on("end", async () => {
-      try {
-        const { url, shortCode } = JSON.parse(body);
+// ===== CREATE SHORT URL =====
+app.post("/shorten", async (req, res) => {
+  try {
+    const { url, shortCode } = req.body;
 
-        if (!isValidUrl(url)) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          return res.end(JSON.stringify({ error: "Invalid URL" }));
-        }
+    if (!url || !shortCode) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
 
-        let existingData = {};
+    if (!isValidUrl(url)) {
+      return res.status(400).json({ error: "Invalid URL" });
+    }
 
-        try {
-          const fileData = await readFile(dataFile, "utf-8");
-          if (fileData.trim()) {
-            existingData = JSON.parse(fileData);
-          }
-        } catch {
-          existingData = {};
-        }
+    const data = await readData();
 
-        if (existingData[shortCode]) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          return res.end(
-            JSON.stringify({ error: "Shortcode already exists" })
-          );
-        }
+    if (data[shortCode]) {
+      return res.status(400).json({ error: "Shortcode already exists" });
+    }
 
-        const isDupURL = Object.values(existingData).includes(url);
-        if (isDupURL) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          return res.end(
-            JSON.stringify({ error: "This URL already exists" })
-          );
-        }
+    if (Object.values(data).includes(url)) {
+      return res.status(400).json({ error: "This URL already exists" });
+    }
 
-        existingData[shortCode] = url;
-        await writeFile(dataFile, JSON.stringify(existingData, null, 2));
+    data[shortCode] = url;
+    await saveData(data);
 
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, shortCode, url }));
-      } catch (err) {
-        console.error("SERVER ERROR:", err);
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Server error" }));
-      }
-    });
-
-    return;
+    res.json({ success: true, shortCode, url });
+  } catch (err) {
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  res.writeHead(404, { "Content-Type": "text/plain" });
-  res.end("Route not found");
 });
 
-server.listen(PORT, () => {
-  console.log(`🚀 Running on http://localhost:${PORT}`);
+// ===== GET ALL SHORTENED URLS =====
+app.get("/urls", async (req, res) => {
+  try {
+    const data = await readData();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
 });
+
+// ===== REDIRECT SHORT URL =====
+// Using /s/:shortCode to avoid conflicts
+app.get("/s/:shortCode", async (req, res) => {
+  try {
+    const { shortCode } = req.params;
+    const data = await readData();
+
+    if (data[shortCode]) {
+      return res.redirect(data[shortCode]);
+    }
+
+    res.status(404).send("Short URL not found");
+  } catch (err) {
+    res.status(500).send("Server error");
+  }
+});
+
+// ================= START SERVER =================
+app.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
+
